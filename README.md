@@ -89,7 +89,7 @@ python predict.py --strike 97500 --minutes 8
 python train.py --days 60
 ```
 
-Training labels proxy BRTI settlement using 1-minute candle data. Retrain after collecting local BRTI ticks for better calibration.
+Training labels prefer **stored BRTI ticks** (true 60-second settlement windows). When tick coverage is insufficient, labels fall back to 1-minute candle typical prices. Interaction features include distance×time, momentum×volatility, distance/ATR, and more.
 
 ## Backtesting
 

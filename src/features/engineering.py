@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 import config
+from src.data.brti import compute_settlement_label
 
 # Columns used as model inputs (order matters for persistence)
 FEATURE_COLUMNS = [
@@ -39,6 +40,13 @@ FEATURE_COLUMNS = [
     "funding_rate",
     "open_interest",
     "order_imbalance",
+    # Interaction features
+    "distance_x_time",
+    "momentum_x_volatility",
+    "distance_x_atr",
+    "funding_x_oi",
+    "distance_over_atr",
+    "distance_over_volatility",
 ]
 
 
@@ -134,6 +142,41 @@ class FeatureEngineer:
         return out
 
     # ------------------------------------------------------------------
+    # Interaction features
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _add_interactions(features: dict[str, float]) -> dict[str, float]:
+        """
+        Add cross-term features capturing non-linear relationships.
+
+        Distance × Time: how much lead/lag matters near expiry
+        Momentum × Volatility: trend strength in active markets
+        Distance / ATR: distance in volatility units (sigma-like)
+        """
+        dist = features["distance_from_strike"]
+        dist_pct = features["distance_from_strike_pct"]
+        atr = features["atr"]
+        atr_pct = features["atr_pct"]
+        vol = features["volatility"]
+        mom = features["momentum"]
+        mins = features["minutes_remaining"]
+        funding = features["funding_rate"]
+        oi = features["open_interest"]
+
+        safe_atr = atr if abs(atr) > 1e-8 else 1e-8
+        safe_vol = vol if abs(vol) > 1e-8 else 1e-8
+
+        features["distance_x_time"] = dist_pct * mins
+        features["momentum_x_volatility"] = mom * vol
+        features["distance_x_atr"] = dist_pct * atr_pct
+        features["funding_x_oi"] = funding * oi
+        features["distance_over_atr"] = dist / safe_atr
+        features["distance_over_volatility"] = dist_pct / safe_vol
+
+        return features
+
+    # ------------------------------------------------------------------
     # Single observation vector
     # ------------------------------------------------------------------
 
@@ -186,7 +229,7 @@ class FeatureEngineer:
             "open_interest": open_interest,
             "order_imbalance": order_imbalance,
         }
-        return features
+        return self._add_interactions(features)
 
     def features_to_array(self, features: dict[str, float]) -> np.ndarray:
         """Convert feature dict to ordered numpy array for the model."""
@@ -199,33 +242,32 @@ class FeatureEngineer:
     def generate_training_samples(
         self,
         candles: pd.DataFrame,
+        brti_ticks: pd.DataFrame | None = None,
         window_minutes: int = config.WINDOW_MINUTES,
         observation_offsets: list[int] | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Generate labeled training samples from historical candles.
+        Generate labeled training samples from historical data.
 
-        Kalshi KXBTC15M settlement rule:
+        Kalshi KXBTC15M settlement:
           YES if avg(BRTI, 60s before close) >= avg(BRTI, 60s before open)
 
-        Without licensed historical BRTI, we proxy labels using 1-minute candles:
-          - reference = close of minute before window open
-          - settlement = close of last minute in window
-          - label = 1 if settlement >= reference
-
-        Microstructure features still come from Binance (BRTI constituents).
+        Labels prefer stored BRTI ticks (true settlement windows). When tick
+        coverage is insufficient, falls back to 1-minute candle typical prices
+        at the pre-open and pre-close settlement minutes.
         """
         if observation_offsets is None:
             observation_offsets = [3, 7, 12]
 
         candles = candles.sort_values("timestamp").reset_index(drop=True)
-        candles["minute"] = candles["timestamp"].dt.minute
-        candles["hour"] = candles["timestamp"].dt.hour
+        if brti_ticks is not None and not brti_ticks.empty:
+            brti_ticks = brti_ticks.sort_values("timestamp").reset_index(drop=True)
 
         samples: list[dict[str, Any]] = []
-        n = len(candles)
+        label_stats = {"brti_ticks": 0, "candle_proxy": 0, "skipped": 0}
 
-        # Find window starts at :00, :15, :30, :45
+        # Window starts at :00, :15, :30, :45
+        candles["minute"] = candles["timestamp"].dt.minute
         window_starts = candles[
             candles["minute"] % window_minutes == 0
         ]["timestamp"].tolist()
@@ -236,18 +278,21 @@ class FeatureEngineer:
                 (candles["timestamp"] >= ws) & (candles["timestamp"] < we)
             ]
             if len(window) < window_minutes:
+                label_stats["skipped"] += 1
                 continue
 
-            # Opening reference: minute before window open (proxy for pre-open 60s BRTI avg)
-            pre_open = candles[candles["timestamp"] == ws - pd.Timedelta(minutes=1)]
-            if not pre_open.empty:
-                reference = float(pre_open.iloc[0]["close"])
-            else:
-                reference = float(window.iloc[0]["open"])
+            settlement = compute_settlement_label(
+                open_time=ws.to_pydatetime() if hasattr(ws, "to_pydatetime") else ws,
+                close_time=we.to_pydatetime() if hasattr(we, "to_pydatetime") else we,
+                brti_ticks=brti_ticks,
+                candles=candles,
+            )
+            if settlement is None:
+                label_stats["skipped"] += 1
+                continue
 
-            # Settlement: last minute close (proxy for pre-close 60s BRTI avg)
-            settlement = float(window.iloc[-1]["close"])
-            label = 1 if settlement >= reference else 0
+            reference, settlement_avg, label, label_source = settlement
+            label_stats[label_source] = label_stats.get(label_source, 0) + 1
 
             for offset in observation_offsets:
                 obs_time = ws + pd.Timedelta(minutes=offset)
@@ -269,7 +314,9 @@ class FeatureEngineer:
                     "window_start": ws.to_pydatetime() if hasattr(ws, "to_pydatetime") else ws,
                     "observation_time": obs_time.to_pydatetime() if hasattr(obs_time, "to_pydatetime") else obs_time,
                     "strike": reference,
+                    "settlement_avg": settlement_avg,
                     "label": label,
+                    "label_source": label_source,
                     "features": features,
                 })
 
@@ -329,6 +376,31 @@ class FeatureEngineer:
             "Elevated volume",
             "Low volume",
             lambda v: v > 1.2,
+        ),
+        "distance_x_time": (
+            "Favorable distance/time",
+            "Unfavorable distance/time",
+            lambda v: v > 0,
+        ),
+        "momentum_x_volatility": (
+            "Strong trending move",
+            "Weak/choppy move",
+            lambda v: abs(v) > 0.0001,
+        ),
+        "distance_over_atr": (
+            "Far above reference (ATR units)",
+            "Far below reference (ATR units)",
+            lambda v: v > 0,
+        ),
+        "distance_over_volatility": (
+            "Large vol-adjusted lead",
+            "Large vol-adjusted deficit",
+            lambda v: v > 0,
+        ),
+        "funding_x_oi": (
+            "Crowded long positioning",
+            "Crowded short positioning",
+            lambda v: v > 0,
         ),
     }
 

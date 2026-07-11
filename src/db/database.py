@@ -201,6 +201,23 @@ class Database:
             f"SELECT * FROM brti_ticks ORDER BY timestamp DESC LIMIT {limit}"
         ).df()
 
+    def get_brti_ticks_range(
+        self,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> pd.DataFrame:
+        """Fetch BRTI ticks in a time range, ordered ascending."""
+        query = "SELECT timestamp, price, source FROM brti_ticks"
+        clauses: list[str] = []
+        if start:
+            clauses.append(f"timestamp >= '{start.isoformat()}'")
+        if end:
+            clauses.append(f"timestamp <= '{end.isoformat()}'")
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY timestamp ASC"
+        return self.conn.execute(query).df()
+
     def get_brti_60s_average(self) -> float | None:
         """Average of BRTI ticks stored in the last 60 seconds."""
         row = self.conn.execute("""

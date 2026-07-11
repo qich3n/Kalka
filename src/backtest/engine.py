@@ -53,8 +53,10 @@ class BacktestEngine:
             raise ValueError("No candle data available for backtesting")
 
         candles = candles.sort_values("timestamp").reset_index(drop=True)
+        brti_ticks = self.db.get_brti_ticks_range()
         samples = self.engineer.generate_training_samples(
             candles,
+            brti_ticks=brti_ticks if not brti_ticks.empty else None,
             observation_offsets=[observation_offset],
         )
 
