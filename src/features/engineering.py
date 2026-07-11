@@ -205,12 +205,15 @@ class FeatureEngineer:
         """
         Generate labeled training samples from historical candles.
 
-        For each 15-minute window aligned to clock boundaries:
-          - Strike = open price at window start
-          - Label  = 1 if close at window end > strike
-          - Features computed at observation_offsets minutes into the window
+        Kalshi KXBTC15M settlement rule:
+          YES if avg(BRTI, 60s before close) >= avg(BRTI, 60s before open)
 
-        Default observation points: 3, 7, 12 minutes in.
+        Without licensed historical BRTI, we proxy labels using 1-minute candles:
+          - reference = close of minute before window open
+          - settlement = close of last minute in window
+          - label = 1 if settlement >= reference
+
+        Microstructure features still come from Binance (BRTI constituents).
         """
         if observation_offsets is None:
             observation_offsets = [3, 7, 12]
@@ -235,9 +238,16 @@ class FeatureEngineer:
             if len(window) < window_minutes:
                 continue
 
-            strike = float(window.iloc[0]["open"])
-            close_at_end = float(window.iloc[-1]["close"])
-            label = 1 if close_at_end > strike else 0
+            # Opening reference: minute before window open (proxy for pre-open 60s BRTI avg)
+            pre_open = candles[candles["timestamp"] == ws - pd.Timedelta(minutes=1)]
+            if not pre_open.empty:
+                reference = float(pre_open.iloc[0]["close"])
+            else:
+                reference = float(window.iloc[0]["open"])
+
+            # Settlement: last minute close (proxy for pre-close 60s BRTI avg)
+            settlement = float(window.iloc[-1]["close"])
+            label = 1 if settlement >= reference else 0
 
             for offset in observation_offsets:
                 obs_time = ws + pd.Timedelta(minutes=offset)
@@ -249,7 +259,7 @@ class FeatureEngineer:
                 try:
                     features = self.build_features(
                         history.tail(120),
-                        strike=strike,
+                        strike=reference,
                         minutes_remaining=minutes_remaining,
                     )
                 except (ValueError, KeyError):
@@ -258,7 +268,7 @@ class FeatureEngineer:
                 samples.append({
                     "window_start": ws.to_pydatetime() if hasattr(ws, "to_pydatetime") else ws,
                     "observation_time": obs_time.to_pydatetime() if hasattr(obs_time, "to_pydatetime") else obs_time,
-                    "strike": strike,
+                    "strike": reference,
                     "label": label,
                     "features": features,
                 })
@@ -301,8 +311,8 @@ class FeatureEngineer:
             lambda v: v > 1.0,
         ),
         "distance_from_strike_pct": (
-            "Above strike",
-            "Below strike",
+            "Above reference",
+            "Below reference",
             lambda v: v > 0,
         ),
         "macd_hist": (

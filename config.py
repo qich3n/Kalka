@@ -33,6 +33,13 @@ KALSHI_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
 KALSHI_SERIES_TICKER = "KXBTC15M"
 
 # ---------------------------------------------------------------------------
+# CF Benchmarks BRTI (Kalshi settlement index)
+# ---------------------------------------------------------------------------
+BRTI_INDEX_ID = "BRTI"
+SETTLEMENT_SECONDS = 60  # Kalshi averages 60 one-second BRTI prints
+# Optional: KALSHI_API_KEY_ID + KALSHI_PRIVATE_KEY_PATH env vars for live BRTI feed
+
+# ---------------------------------------------------------------------------
 # Market window
 # ---------------------------------------------------------------------------
 WINDOW_MINUTES = 15

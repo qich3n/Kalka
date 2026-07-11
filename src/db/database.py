@@ -52,6 +52,13 @@ class Database:
             )
         """)
         self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS brti_ticks (
+                timestamp TIMESTAMP PRIMARY KEY,
+                price DOUBLE,
+                source VARCHAR
+            )
+        """)
+        self.conn.execute("""
             CREATE TABLE IF NOT EXISTS training_samples (
                 id INTEGER PRIMARY KEY,
                 window_start TIMESTAMP,
@@ -173,6 +180,40 @@ class Database:
             "SELECT open_interest FROM open_interest ORDER BY timestamp DESC LIMIT 1"
         ).fetchone()
         return row[0] if row else None
+
+    # ------------------------------------------------------------------
+    # BRTI ticks (CF Benchmarks settlement index)
+    # ------------------------------------------------------------------
+
+    def upsert_brti_tick(
+        self, timestamp: datetime, price: float, source: str
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT OR REPLACE INTO brti_ticks (timestamp, price, source)
+            VALUES (?, ?, ?)
+            """,
+            [timestamp, price, source],
+        )
+
+    def get_brti_ticks(self, limit: int = 120) -> pd.DataFrame:
+        return self.conn.execute(
+            f"SELECT * FROM brti_ticks ORDER BY timestamp DESC LIMIT {limit}"
+        ).df()
+
+    def get_brti_60s_average(self) -> float | None:
+        """Average of BRTI ticks stored in the last 60 seconds."""
+        row = self.conn.execute("""
+            SELECT AVG(price) FROM brti_ticks
+            WHERE timestamp >= current_timestamp - INTERVAL 60 SECOND
+        """).fetchone()
+        return float(row[0]) if row and row[0] else None
+
+    def get_latest_brti(self) -> tuple[float, str] | None:
+        row = self.conn.execute(
+            "SELECT price, source FROM brti_ticks ORDER BY timestamp DESC LIMIT 1"
+        ).fetchone()
+        return (row[0], row[1]) if row else None
 
     # ------------------------------------------------------------------
     # Training samples
