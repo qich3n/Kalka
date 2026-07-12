@@ -82,6 +82,7 @@ YES_THRESHOLD = 0.55   # recommend BUY YES above this
 NO_THRESHOLD = 0.45    # recommend BUY NO below this
 CONFIDENCE_THRESHOLD = 0.55  # minimum conviction to output YES/NO label
 CONVICTION_THRESHOLD = CONFIDENCE_THRESHOLD  # alias
+MIN_EDGE_THRESHOLD = 0.05  # minimum executable edge to signal ENTER
 
 # ---------------------------------------------------------------------------
 # Feature engineering

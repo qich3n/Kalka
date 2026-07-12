@@ -85,7 +85,15 @@ data/
 
 If confidence (max of prob, 1-prob) is below 55%, the prediction label shows **NO TRADE** regardless of direction.
 
-Executable edge uses Kalshi **ask prices** (what you actually pay), not mid-price.
+**Entry Signal** combines the recommendation with executable edge:
+
+| Condition | Entry Signal |
+|-----------|-------------|
+| BUY YES and edge ≥ 5% | ENTER YES |
+| BUY NO and edge ≥ 5% | ENTER NO |
+| Otherwise | SKIP |
+
+Executable edge uses Kalshi **ask prices** (what you actually pay), not mid-price. Tune `MIN_EDGE_THRESHOLD` in `config.py`.
 
 ## Manual Overrides
 
