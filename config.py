@@ -88,6 +88,7 @@ PREFER_BRTI_LABELS = True  # train on BRTI-labeled samples when enough exist
 MIN_BRTI_TRAINING_SAMPLES = 50
 CALIBRATION_METHOD = "isotonic"  # isotonic or platt
 BRTI_LOOKUP_MAX_SECONDS = 120  # max age for BRTI tick used as index price
+MAX_BRTI_AGE_SECONDS = 30  # warn when cfbenchmarks scrape is older than this
 
 # ---------------------------------------------------------------------------
 # Feature engineering

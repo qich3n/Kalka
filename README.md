@@ -43,7 +43,7 @@ export KALSHI_API_KEY_ID="your-key-id"
 export KALSHI_PRIVATE_KEY_PATH="/path/to/kalshi-private-key.pem"
 ```
 
-Without keys, Kalka falls back to the public CF Benchmarks index page.
+Without keys, Kalka falls back to the public CF Benchmarks index page (typically 5–30+ seconds delayed). Output shows quote age; values marked `[STALE]` are too old for reliable edge. For live 1-second BRTI, set Kalshi API credentials:
 
 ## What It Does
 
