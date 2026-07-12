@@ -8,7 +8,7 @@ training labels, model predictions, and backtest results.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -364,15 +364,16 @@ class Database:
         limit: int = 10,
     ) -> pd.DataFrame:
         """Fetch recent predictions for the same reference/strike."""
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=within_minutes)
         return self.conn.execute(
             """
             SELECT * FROM predictions
             WHERE strike = ?
-              AND created_at >= current_timestamp - INTERVAL ? MINUTE
+              AND created_at >= ?
             ORDER BY created_at DESC
             LIMIT ?
             """,
-            [strike, within_minutes, limit],
+            [strike, cutoff, limit],
         ).df()
 
     def get_predictions(self, limit: int = 100) -> pd.DataFrame:
