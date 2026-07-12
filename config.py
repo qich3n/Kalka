@@ -80,7 +80,8 @@ XGBOOST_PARAMS = {
 # ---------------------------------------------------------------------------
 YES_THRESHOLD = 0.55   # recommend BUY YES above this
 NO_THRESHOLD = 0.45    # recommend BUY NO below this
-CONFIDENCE_THRESHOLD = 0.55  # minimum confidence to output a trade signal
+CONFIDENCE_THRESHOLD = 0.55  # minimum conviction to output YES/NO label
+CONVICTION_THRESHOLD = CONFIDENCE_THRESHOLD  # alias
 
 # ---------------------------------------------------------------------------
 # Feature engineering

@@ -85,6 +85,8 @@ data/
 
 If confidence (max of prob, 1-prob) is below 55%, the prediction label shows **NO TRADE** regardless of direction.
 
+Executable edge uses Kalshi **ask prices** (what you actually pay), not mid-price.
+
 ## Manual Overrides
 
 ```bash

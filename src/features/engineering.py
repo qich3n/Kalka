@@ -264,22 +264,18 @@ class FeatureEngineer:
         """
         Generate labeled training samples from historical data.
 
-        Kalshi KXBTC15M settlement:
-          YES if avg(BRTI, 60s before close) >= avg(BRTI, 60s before open)
-
-        Labels prefer stored BRTI ticks (true settlement windows). When tick
-        coverage is insufficient, falls back to composite multi-exchange
-        typical prices (median across Binance/Coinbase/Kraken), then single-
-        exchange candle proxy.
+        `candles` should be composite (median) candles when available — used
+        for microstructure features. Labels use BRTI ticks or composite proxy.
         """
         if observation_offsets is None:
             observation_offsets = [3, 7, 12]
 
-        label_candles = composite_candles if (
+        feature_candles = composite_candles if (
             composite_candles is not None and not composite_candles.empty
         ) else candles
+        label_candles = feature_candles
 
-        candles = candles.sort_values("timestamp").reset_index(drop=True)
+        feature_candles = feature_candles.sort_values("timestamp").reset_index(drop=True)
         label_candles = label_candles.sort_values("timestamp").reset_index(drop=True)
         if brti_ticks is not None and not brti_ticks.empty:
             brti_ticks = brti_ticks.sort_values("timestamp").reset_index(drop=True)
@@ -288,15 +284,15 @@ class FeatureEngineer:
         label_stats = {"brti_ticks": 0, "candle_proxy": 0, "skipped": 0}
 
         # Window starts at :00, :15, :30, :45
-        candles["minute"] = candles["timestamp"].dt.minute
-        window_starts = candles[
-            candles["minute"] % window_minutes == 0
+        feature_candles["minute"] = feature_candles["timestamp"].dt.minute
+        window_starts = feature_candles[
+            feature_candles["minute"] % window_minutes == 0
         ]["timestamp"].tolist()
 
         for ws in window_starts:
             we = ws + pd.Timedelta(minutes=window_minutes)
-            window = candles[
-                (candles["timestamp"] >= ws) & (candles["timestamp"] < we)
+            window = feature_candles[
+                (feature_candles["timestamp"] >= ws) & (feature_candles["timestamp"] < we)
             ]
             if len(window) < window_minutes:
                 label_stats["skipped"] += 1
@@ -317,7 +313,7 @@ class FeatureEngineer:
 
             for offset in observation_offsets:
                 obs_time = ws + pd.Timedelta(minutes=offset)
-                history = candles[candles["timestamp"] <= obs_time]
+                history = feature_candles[feature_candles["timestamp"] <= obs_time]
                 if len(history) < 30:
                     continue
 
