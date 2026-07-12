@@ -29,16 +29,7 @@ class Database:
 
     def _init_schema(self) -> None:
         """Create tables if they do not exist."""
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS candles (
-                timestamp TIMESTAMP PRIMARY KEY,
-                open DOUBLE,
-                high DOUBLE,
-                low DOUBLE,
-                close DOUBLE,
-                volume DOUBLE
-            )
-        """)
+        self._migrate_candles_schema()
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS funding_rates (
                 timestamp TIMESTAMP PRIMARY KEY,
@@ -108,16 +99,58 @@ class Database:
             CREATE SEQUENCE IF NOT EXISTS backtest_results_id_seq START 1
         """)
 
+    def _migrate_candles_schema(self) -> None:
+        """Ensure candles table supports multiple exchanges."""
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS candles (
+                exchange VARCHAR NOT NULL DEFAULT 'binance',
+                timestamp TIMESTAMP NOT NULL,
+                open DOUBLE,
+                high DOUBLE,
+                low DOUBLE,
+                close DOUBLE,
+                volume DOUBLE,
+                PRIMARY KEY (exchange, timestamp)
+            )
+        """)
+        # Migrate legacy single-exchange schema (timestamp-only PK)
+        cols = self.conn.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'candles'"
+        ).fetchall()
+        col_names = {c[0] for c in cols}
+        if col_names and "exchange" not in col_names:
+            self.conn.execute("""
+                CREATE TABLE candles_migrated (
+                    exchange VARCHAR NOT NULL DEFAULT 'binance',
+                    timestamp TIMESTAMP NOT NULL,
+                    open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume DOUBLE,
+                    PRIMARY KEY (exchange, timestamp)
+                )
+            """)
+            self.conn.execute("""
+                INSERT INTO candles_migrated (exchange, timestamp, open, high, low, close, volume)
+                SELECT 'binance', timestamp, open, high, low, close, volume FROM candles
+            """)
+            self.conn.execute("DROP TABLE candles")
+            self.conn.execute("ALTER TABLE candles_migrated RENAME TO candles")
+
     # ------------------------------------------------------------------
     # Candles
     # ------------------------------------------------------------------
 
-    def upsert_candles(self, df: pd.DataFrame) -> int:
-        """Insert or replace candle rows. Returns number of rows written."""
+    def upsert_candles(self, df: pd.DataFrame, exchange: str = "binance") -> int:
+        """Insert or replace candle rows for a given exchange."""
         if df.empty:
             return 0
-        self.conn.execute("DELETE FROM candles WHERE timestamp IN (SELECT timestamp FROM df)")
-        self.conn.execute("INSERT INTO candles SELECT * FROM df")
+        df = df.copy()
+        df["exchange"] = exchange
+        self.conn.execute(
+            "DELETE FROM candles WHERE exchange = ? AND timestamp IN (SELECT timestamp FROM df)",
+            [exchange],
+        )
+        self.conn.execute(
+            "INSERT INTO candles SELECT exchange, timestamp, open, high, low, close, volume FROM df"
+        )
         return len(df)
 
     def get_candles(
@@ -125,25 +158,41 @@ class Database:
         start: datetime | None = None,
         end: datetime | None = None,
         limit: int | None = None,
+        exchange: str = "binance",
     ) -> pd.DataFrame:
-        """Fetch candles ordered by timestamp ascending."""
-        query = "SELECT * FROM candles"
-        clauses: list[str] = []
+        """Fetch candles for one exchange, ordered by timestamp ascending."""
+        query = "SELECT timestamp, open, high, low, close, volume FROM candles WHERE exchange = ?"
+        params: list = [exchange]
         if start:
-            clauses.append(f"timestamp >= '{start.isoformat()}'")
+            query += " AND timestamp >= ?"
+            params.append(start)
         if end:
-            clauses.append(f"timestamp <= '{end.isoformat()}'")
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
+            query += " AND timestamp <= ?"
+            params.append(end)
         query += " ORDER BY timestamp ASC"
         if limit:
             query += f" LIMIT {limit}"
-        return self.conn.execute(query).df()
+        return self.conn.execute(query, params).df()
 
-    def get_latest_candle_time(self) -> datetime | None:
-        """Return the most recent candle timestamp, or None."""
+    def get_all_exchange_candles(
+        self,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int | None = None,
+    ) -> dict[str, pd.DataFrame]:
+        """Fetch candles for all exchanges."""
+        result = {}
+        for ex in config.EXCHANGES:
+            df = self.get_candles(start=start, end=end, limit=limit, exchange=ex)
+            if not df.empty:
+                result[ex] = df
+        return result
+
+    def get_latest_candle_time(self, exchange: str = "binance") -> datetime | None:
+        """Return the most recent candle timestamp for an exchange."""
         row = self.conn.execute(
-            "SELECT MAX(timestamp) FROM candles"
+            "SELECT MAX(timestamp) FROM candles WHERE exchange = ?",
+            [exchange],
         ).fetchone()
         return row[0] if row and row[0] else None
 

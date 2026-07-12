@@ -9,7 +9,17 @@ Kalshi **KXBTC15M** does **not** settle on Binance spot. It uses the [CF Benchma
 - **YES** if the 60-second BRTI average before window close ≥ the 60-second BRTI average before window open
 - The Kalshi `floor_strike` / "Target Price" is the **opening reference** (pre-open 60s BRTI avg)
 
-Kalka uses **BRTI for index price and reference distance**. Binance data is used only for microstructure features (EMA, volume, order flow, etc.).
+Kalka uses **BRTI for index price and reference distance**. Microstructure features come from **Binance** candles; **Coinbase** and **Kraken** provide cross-exchange basis and composite BRTI proxy labels.
+
+## Data Sources
+
+| Source | Role |
+|--------|------|
+| **CF Benchmarks BRTI** | Settlement index (Kalshi resolution) |
+| **Kalshi** | Market context, reference price, implied probability |
+| **Binance** | Primary microstructure candles, funding, open interest |
+| **Coinbase** | Cross-exchange basis, composite BRTI proxy |
+| **Kraken** | Cross-exchange basis, composite BRTI proxy |
 
 ## Quick Start
 
@@ -55,7 +65,7 @@ It does not place trades. Every prediction includes:
 predict.py / train.py / backtest.py   ← entry points
 config.py                             ← shared configuration
 src/
-  data/       BRTI + Binance + Kalshi API clients
+  data/       BRTI + Binance + Coinbase + Kraken + Kalshi clients
   db/         DuckDB persistence
   features/   EMA, VWAP, ATR, RSI, MACD, momentum, etc.
   models/     XGBoost training + live prediction
@@ -89,7 +99,7 @@ python predict.py --strike 97500 --minutes 8
 python train.py --days 60
 ```
 
-Training labels prefer **stored BRTI ticks** (true 60-second settlement windows). When tick coverage is insufficient, labels fall back to 1-minute candle typical prices. Interaction features include distance×time, momentum×volatility, distance/ATR, and more.
+Training labels prefer **stored BRTI ticks** (true 60-second settlement windows). When unavailable, labels use a **median composite** across Binance/Coinbase/Kraken.
 
 ## Backtesting
 

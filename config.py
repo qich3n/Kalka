@@ -22,9 +22,25 @@ FEATURE_NAMES_PATH = MODEL_DIR / "feature_names.json"
 # ---------------------------------------------------------------------------
 BINANCE_BASE_URL = "https://data-api.binance.vision"
 BINANCE_FUTURES_URL = "https://fapi.binance.com"
+# ---------------------------------------------------------------------------
+# Coinbase
+# ---------------------------------------------------------------------------
+COINBASE_BASE_URL = "https://api.exchange.coinbase.com"
+COINBASE_PRODUCT_ID = "BTC-USD"
+
+# ---------------------------------------------------------------------------
+# Kraken
+# ---------------------------------------------------------------------------
+KRAKEN_BASE_URL = "https://api.kraken.com"
+KRAKEN_PAIR = "XBTUSD"
+
+# ---------------------------------------------------------------------------
+# Shared market settings
+# ---------------------------------------------------------------------------
 SYMBOL = "BTCUSDT"
 CANDLE_INTERVAL = "1m"
 CANDLE_LIMIT = 500  # candles per request
+EXCHANGES = ("binance", "coinbase", "kraken")
 
 # ---------------------------------------------------------------------------
 # Kalshi

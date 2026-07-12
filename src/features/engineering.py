@@ -40,6 +40,11 @@ FEATURE_COLUMNS = [
     "funding_rate",
     "open_interest",
     "order_imbalance",
+    # Cross-exchange features (BRTI constituent venues)
+    "coinbase_basis_pct",
+    "kraken_basis_pct",
+    "cross_exchange_spread_pct",
+    "composite_imbalance",
     # Interaction features
     "distance_x_time",
     "momentum_x_volatility",
@@ -188,6 +193,7 @@ class FeatureEngineer:
         funding_rate: float = 0.0,
         open_interest: float = 0.0,
         order_imbalance: float = 0.0,
+        cross_exchange: dict[str, float] | None = None,
     ) -> dict[str, float]:
         """
         Build a feature dict from the latest candle window.
@@ -229,6 +235,14 @@ class FeatureEngineer:
             "open_interest": open_interest,
             "order_imbalance": order_imbalance,
         }
+
+        # Cross-exchange features (default 0 if unavailable)
+        cross = cross_exchange or {}
+        features["coinbase_basis_pct"] = cross.get("coinbase_basis_pct", 0.0)
+        features["kraken_basis_pct"] = cross.get("kraken_basis_pct", 0.0)
+        features["cross_exchange_spread_pct"] = cross.get("cross_exchange_spread_pct", 0.0)
+        features["composite_imbalance"] = cross.get("composite_imbalance", order_imbalance)
+
         return self._add_interactions(features)
 
     def features_to_array(self, features: dict[str, float]) -> np.ndarray:
@@ -243,6 +257,7 @@ class FeatureEngineer:
         self,
         candles: pd.DataFrame,
         brti_ticks: pd.DataFrame | None = None,
+        composite_candles: pd.DataFrame | None = None,
         window_minutes: int = config.WINDOW_MINUTES,
         observation_offsets: list[int] | None = None,
     ) -> list[dict[str, Any]]:
@@ -253,13 +268,19 @@ class FeatureEngineer:
           YES if avg(BRTI, 60s before close) >= avg(BRTI, 60s before open)
 
         Labels prefer stored BRTI ticks (true settlement windows). When tick
-        coverage is insufficient, falls back to 1-minute candle typical prices
-        at the pre-open and pre-close settlement minutes.
+        coverage is insufficient, falls back to composite multi-exchange
+        typical prices (median across Binance/Coinbase/Kraken), then single-
+        exchange candle proxy.
         """
         if observation_offsets is None:
             observation_offsets = [3, 7, 12]
 
+        label_candles = composite_candles if (
+            composite_candles is not None and not composite_candles.empty
+        ) else candles
+
         candles = candles.sort_values("timestamp").reset_index(drop=True)
+        label_candles = label_candles.sort_values("timestamp").reset_index(drop=True)
         if brti_ticks is not None and not brti_ticks.empty:
             brti_ticks = brti_ticks.sort_values("timestamp").reset_index(drop=True)
 
@@ -285,7 +306,7 @@ class FeatureEngineer:
                 open_time=ws.to_pydatetime() if hasattr(ws, "to_pydatetime") else ws,
                 close_time=we.to_pydatetime() if hasattr(we, "to_pydatetime") else we,
                 brti_ticks=brti_ticks,
-                candles=candles,
+                candles=label_candles,
             )
             if settlement is None:
                 label_stats["skipped"] += 1
@@ -400,6 +421,21 @@ class FeatureEngineer:
         "funding_x_oi": (
             "Crowded long positioning",
             "Crowded short positioning",
+            lambda v: v > 0,
+        ),
+        "cross_exchange_spread_pct": (
+            "Wide cross-exchange spread",
+            "Tight cross-exchange spread",
+            lambda v: v > 0.0005,
+        ),
+        "coinbase_basis_pct": (
+            "Coinbase premium",
+            "Coinbase discount",
+            lambda v: v > 0,
+        ),
+        "kraken_basis_pct": (
+            "Kraken premium",
+            "Kraken discount",
             lambda v: v > 0,
         ),
     }

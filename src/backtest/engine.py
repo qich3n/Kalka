@@ -15,6 +15,7 @@ import pandas as pd
 
 import config
 from src.db.database import Database
+from src.data.aggregator import ExchangeAggregator
 from src.features.engineering import FEATURE_COLUMNS, FeatureEngineer
 from src.models.trainer import ModelTrainer
 
@@ -53,10 +54,13 @@ class BacktestEngine:
             raise ValueError("No candle data available for backtesting")
 
         candles = candles.sort_values("timestamp").reset_index(drop=True)
+        all_candles = self.db.get_all_exchange_candles()
+        composite = ExchangeAggregator.build_composite_candles(all_candles)
         brti_ticks = self.db.get_brti_ticks_range()
         samples = self.engineer.generate_training_samples(
             candles,
             brti_ticks=brti_ticks if not brti_ticks.empty else None,
+            composite_candles=composite if not composite.empty else None,
             observation_offsets=[observation_offset],
         )
 
