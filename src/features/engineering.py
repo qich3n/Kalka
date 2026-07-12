@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 import config
-from src.data.brti import compute_settlement_label
+from src.data.brti import brti_price_at_time, compute_settlement_label
 
 # Columns used as model inputs (order matters for persistence)
 FEATURE_COLUMNS = [
@@ -194,18 +194,22 @@ class FeatureEngineer:
         open_interest: float = 0.0,
         order_imbalance: float = 0.0,
         cross_exchange: dict[str, float] | None = None,
+        index_price: float | None = None,
     ) -> dict[str, float]:
         """
         Build a feature dict from the latest candle window.
 
         Uses the last row of computed indicators plus market context.
+        When `index_price` is provided (typically live or historical BRTI),
+        distance-from-strike features use it instead of candle close.
         """
         if candles.empty:
             raise ValueError("Cannot build features from empty candle data")
 
         indicators = self.compute_indicators(candles)
         latest = indicators.iloc[-1]
-        price = float(latest["close"])
+        candle_price = float(latest["close"])
+        price = index_price if index_price is not None else candle_price
 
         distance = price - strike
         distance_pct = distance / strike if strike else 0.0
@@ -215,7 +219,7 @@ class FeatureEngineer:
             "ema_fast": float(latest["ema_fast"]),
             "ema_slow": float(latest["ema_slow"]),
             "ema_ratio": float(latest["ema_ratio"]) if pd.notna(latest["ema_ratio"]) else 1.0,
-            "vwap": float(latest["vwap"]) if pd.notna(latest["vwap"]) else price,
+            "vwap": float(latest["vwap"]) if pd.notna(latest["vwap"]) else candle_price,
             "price_vs_vwap": float(latest["price_vs_vwap"]) if pd.notna(latest["price_vs_vwap"]) else 0.0,
             "atr": float(latest["atr"]) if pd.notna(latest["atr"]) else 0.0,
             "atr_pct": float(latest["atr_pct"]) if pd.notna(latest["atr_pct"]) else 0.0,
@@ -318,11 +322,18 @@ class FeatureEngineer:
                     continue
 
                 minutes_remaining = window_minutes - offset
+                index_price = None
+                if brti_ticks is not None and not brti_ticks.empty:
+                    index_price = brti_price_at_time(
+                        brti_ticks,
+                        obs_time.to_pydatetime() if hasattr(obs_time, "to_pydatetime") else obs_time,
+                    )
                 try:
                     features = self.build_features(
                         history.tail(120),
                         strike=reference,
                         minutes_remaining=minutes_remaining,
+                        index_price=index_price,
                     )
                 except (ValueError, KeyError):
                     continue

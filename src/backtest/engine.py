@@ -46,7 +46,7 @@ class BacktestEngine:
         PnL assumes $1 contracts: BUY YES wins (1 - entry_price) on correct
         calls, loses entry_price on incorrect calls. Simplified for research.
         """
-        model = self.trainer.load_model()
+        self.trainer.load_model()
 
         if candles is None:
             candles = self.db.get_candles()
@@ -74,7 +74,7 @@ class BacktestEngine:
             features = sample["features"]
             X = self.engineer.features_to_array(features).reshape(1, -1)
             X = np.nan_to_num(X, nan=0.0)
-            prob = float(model.predict_proba(X)[0, 1])
+            prob = float(self.trainer.predict_probability(X)[0])
             label = sample["label"]
 
             if prob > config.YES_THRESHOLD:

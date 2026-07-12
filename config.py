@@ -16,6 +16,7 @@ DB_PATH = DATA_DIR / "kalka.duckdb"
 MODEL_DIR = DATA_DIR / "models"
 MODEL_PATH = MODEL_DIR / "xgboost_model.json"
 FEATURE_NAMES_PATH = MODEL_DIR / "feature_names.json"
+CALIBRATOR_PATH = MODEL_DIR / "calibrator.pkl"
 
 # ---------------------------------------------------------------------------
 # Binance
@@ -83,6 +84,10 @@ NO_THRESHOLD = 0.45    # recommend BUY NO below this
 CONFIDENCE_THRESHOLD = 0.55  # minimum conviction to output YES/NO label
 CONVICTION_THRESHOLD = CONFIDENCE_THRESHOLD  # alias
 MIN_EDGE_THRESHOLD = 0.05  # minimum executable edge to signal ENTER
+PREFER_BRTI_LABELS = True  # train on BRTI-labeled samples when enough exist
+MIN_BRTI_TRAINING_SAMPLES = 50
+CALIBRATION_METHOD = "isotonic"  # isotonic or platt
+BRTI_LOOKUP_MAX_SECONDS = 120  # max age for BRTI tick used as index price
 
 # ---------------------------------------------------------------------------
 # Feature engineering

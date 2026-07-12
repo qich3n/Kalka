@@ -23,15 +23,26 @@ def main() -> None:
         "--days", type=int, default=30,
         help="Days of historical data to use (default: 30)",
     )
+    label_group = parser.add_mutually_exclusive_group()
+    label_group.add_argument(
+        "--brti-only", action="store_true",
+        help="Train only on BRTI settlement labels",
+    )
+    label_group.add_argument(
+        "--all-labels", action="store_true",
+        help="Include candle-proxy labels even when BRTI labels exist",
+    )
     args = parser.parse_args()
+
+    brti_only = True if args.brti_only else False if args.all_labels else None
 
     trainer = ModelTrainer()
     try:
         print(f"Building training data from {args.days} days of candles...")
-        df = trainer.build_training_data_from_candles(days=args.days)
+        df = trainer.build_training_data_from_candles(days=args.days, brti_only=brti_only)
 
         print(f"\nTraining XGBoost on {len(df)} samples...")
-        metrics = trainer.train(df)
+        metrics = trainer.train(df, brti_only=brti_only)
 
         print("\nTop feature importances:")
         sorted_imp = sorted(
@@ -43,6 +54,7 @@ def main() -> None:
             print(f"  {feat:30s} {imp:.4f}")
 
         print("\nModel saved to:", config.MODEL_PATH)
+        print("Calibrator saved to:", config.CALIBRATOR_PATH)
     finally:
         trainer.db.close()
 
