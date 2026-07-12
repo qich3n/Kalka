@@ -357,6 +357,24 @@ class Database:
             ],
         )
 
+    def get_recent_predictions(
+        self,
+        strike: float,
+        within_minutes: float = 3,
+        limit: int = 10,
+    ) -> pd.DataFrame:
+        """Fetch recent predictions for the same reference/strike."""
+        return self.conn.execute(
+            """
+            SELECT * FROM predictions
+            WHERE strike = ?
+              AND created_at >= current_timestamp - INTERVAL ? MINUTE
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            [strike, within_minutes, limit],
+        ).df()
+
     def get_predictions(self, limit: int = 100) -> pd.DataFrame:
         return self.conn.execute(
             f"SELECT * FROM predictions ORDER BY created_at DESC LIMIT {limit}"

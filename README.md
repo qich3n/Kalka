@@ -85,15 +85,16 @@ data/
 
 If confidence (max of prob, 1-prob) is below 55%, the prediction label shows **NO TRADE** regardless of direction.
 
-**Entry Signal** combines the recommendation with executable edge:
+**Entry Signal** is stricter than recommendation — all must pass:
 
-| Condition | Entry Signal |
-|-----------|-------------|
-| BUY YES and edge ≥ 5% | ENTER YES |
-| BUY NO and edge ≥ 5% | ENTER NO |
-| Otherwise | SKIP |
+| Gate | Requirement |
+|------|-------------|
+| Conviction | ≥ 70% (`ENTRY_CONVICTION_THRESHOLD`) |
+| Edge | ≥ 5% on recommended side |
+| BRTI alignment | YES only if BRTI ≥ reference; NO only if BRTI ≤ reference |
+| Persistence | Same signal on 2 consecutive runs within 3 minutes |
 
-Executable edge uses Kalshi **ask prices** (what you actually pay), not mid-price. Tune `MIN_EDGE_THRESHOLD` in `config.py`.
+Tune thresholds in `config.py`. Executable edge uses Kalshi **ask prices** (what you actually pay), not mid-price.
 
 ## Manual Overrides
 

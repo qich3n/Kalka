@@ -84,6 +84,10 @@ NO_THRESHOLD = 0.45    # recommend BUY NO below this
 CONFIDENCE_THRESHOLD = 0.55  # minimum conviction to output YES/NO label
 CONVICTION_THRESHOLD = CONFIDENCE_THRESHOLD  # alias
 MIN_EDGE_THRESHOLD = 0.05  # minimum executable edge to signal ENTER
+ENTRY_CONVICTION_THRESHOLD = 0.70  # stricter conviction bar for ENTER (vs 55% recommendation)
+REQUIRE_BRTI_ALIGNMENT = True  # YES only when BRTI >= reference; NO when BRTI <= reference
+ENTRY_PERSISTENCE_SAMPLES = 2  # consecutive agreeing runs required before ENTER
+ENTRY_PERSISTENCE_MINUTES = 3  # lookback window for persistence check
 PREFER_BRTI_LABELS = True  # train on BRTI-labeled samples when enough exist
 MIN_BRTI_TRAINING_SAMPLES = 50
 CALIBRATION_METHOD = "isotonic"  # isotonic or platt
