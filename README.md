@@ -112,7 +112,7 @@ python train.py --days 60
 
 Training labels prefer **stored BRTI ticks** (true 60-second settlement windows). When enough BRTI-labeled samples exist, training automatically uses them only. Force with `python train.py --brti-only`, or include candle proxies with `--all-labels`.
 
-Distance-from-strike features use **BRTI index price** (not exchange spot) whenever tick data is available. Probabilities are **isotonically calibrated** on the validation fold and applied at inference.
+The model includes **BRTI-native features**: 60s average vs reference, 1m/3m/5m momentum, 5m/15m volatility, composite basis, and a time-weighted settlement proxy. **Retrain after this update:** `python train.py --days 60`.
 
 ## Backtesting
 

@@ -12,9 +12,14 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from datetime import datetime, timezone
 
 import config
-from src.data.brti import brti_price_at_time, compute_settlement_label
+from src.data.brti import (
+    brti_price_at_time,
+    compute_brti_features,
+    compute_settlement_label,
+)
 
 # Columns used as model inputs (order matters for persistence)
 FEATURE_COLUMNS = [
@@ -45,6 +50,15 @@ FEATURE_COLUMNS = [
     "kraken_basis_pct",
     "cross_exchange_spread_pct",
     "composite_imbalance",
+    # BRTI settlement-aligned features
+    "brti_60s_avg_vs_reference_pct",
+    "brti_momentum_1m",
+    "brti_momentum_3m",
+    "brti_momentum_5m",
+    "brti_volatility_5m",
+    "brti_volatility_15m",
+    "brti_vs_composite_basis_pct",
+    "settlement_proxy_vs_reference_pct",
     # Interaction features
     "distance_x_time",
     "momentum_x_volatility",
@@ -195,6 +209,10 @@ class FeatureEngineer:
         order_imbalance: float = 0.0,
         cross_exchange: dict[str, float] | None = None,
         index_price: float | None = None,
+        brti_ticks: pd.DataFrame | None = None,
+        brti_spot: float | None = None,
+        composite_price: float | None = None,
+        observation_time: datetime | None = None,
     ) -> dict[str, float]:
         """
         Build a feature dict from the latest candle window.
@@ -246,6 +264,19 @@ class FeatureEngineer:
         features["kraken_basis_pct"] = cross.get("kraken_basis_pct", 0.0)
         features["cross_exchange_spread_pct"] = cross.get("cross_exchange_spread_pct", 0.0)
         features["composite_imbalance"] = cross.get("composite_imbalance", order_imbalance)
+
+        spot = brti_spot if brti_spot is not None else price
+        obs_time = observation_time or datetime.now(timezone.utc)
+        features.update(
+            compute_brti_features(
+                brti_ticks,
+                at_time=obs_time,
+                reference=strike,
+                minutes_remaining=minutes_remaining,
+                brti_spot=spot,
+                composite_price=composite_price if composite_price else candle_price,
+            )
+        )
 
         return self._add_interactions(features)
 
@@ -323,17 +354,24 @@ class FeatureEngineer:
 
                 minutes_remaining = window_minutes - offset
                 index_price = None
+                obs_dt = (
+                    obs_time.to_pydatetime()
+                    if hasattr(obs_time, "to_pydatetime")
+                    else obs_time
+                )
                 if brti_ticks is not None and not brti_ticks.empty:
-                    index_price = brti_price_at_time(
-                        brti_ticks,
-                        obs_time.to_pydatetime() if hasattr(obs_time, "to_pydatetime") else obs_time,
-                    )
+                    index_price = brti_price_at_time(brti_ticks, obs_dt)
+                composite_at_obs = float(history.iloc[-1]["close"])
                 try:
                     features = self.build_features(
                         history.tail(120),
                         strike=reference,
                         minutes_remaining=minutes_remaining,
                         index_price=index_price,
+                        brti_ticks=brti_ticks,
+                        brti_spot=index_price if index_price is not None else composite_at_obs,
+                        composite_price=composite_at_obs,
+                        observation_time=obs_dt,
                     )
                 except (ValueError, KeyError):
                     continue
@@ -443,6 +481,46 @@ class FeatureEngineer:
         "kraken_basis_pct": (
             "Kraken premium",
             "Kraken discount",
+            lambda v: v > 0,
+        ),
+        "brti_60s_avg_vs_reference_pct": (
+            "60s BRTI avg above reference",
+            "60s BRTI avg below reference",
+            lambda v: v > 0,
+        ),
+        "settlement_proxy_vs_reference_pct": (
+            "Settlement proxy above reference",
+            "Settlement proxy below reference",
+            lambda v: v > 0,
+        ),
+        "brti_momentum_1m": (
+            "BRTI rising (1m)",
+            "BRTI falling (1m)",
+            lambda v: v > 0,
+        ),
+        "brti_momentum_3m": (
+            "BRTI rising (3m)",
+            "BRTI falling (3m)",
+            lambda v: v > 0,
+        ),
+        "brti_momentum_5m": (
+            "BRTI rising (5m)",
+            "BRTI falling (5m)",
+            lambda v: v > 0,
+        ),
+        "brti_volatility_5m": (
+            "High BRTI volatility (5m)",
+            "Low BRTI volatility (5m)",
+            lambda v: v > 0.0003,
+        ),
+        "brti_volatility_15m": (
+            "High BRTI volatility (15m)",
+            "Low BRTI volatility (15m)",
+            lambda v: v > 0.0003,
+        ),
+        "brti_vs_composite_basis_pct": (
+            "BRTI above composite spot",
+            "BRTI below composite spot",
             lambda v: v > 0,
         ),
     }
