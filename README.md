@@ -89,12 +89,15 @@ If confidence (max of prob, 1-prob) is below 55%, the prediction label shows **N
 
 | Gate | Requirement |
 |------|-------------|
+| Time window | 5–10 minutes remaining in the window |
 | Conviction | ≥ 70% (`ENTRY_CONVICTION_THRESHOLD`) |
-| Edge | ≥ 5% on recommended side |
+| Net edge | ≥ 5% after spread buffer + Kalshi fee on expected profit |
 | BRTI alignment | YES only if BRTI ≥ reference; NO only if BRTI ≤ reference |
-| Persistence | Same signal on 2 consecutive runs within 3 minutes |
+| Persistence | Same signal on 2 consecutive runs within 3 minutes (live only) |
 
-Tune thresholds in `config.py`. Executable edge uses Kalshi **ask prices** (what you actually pay), not mid-price.
+Tune thresholds in `config.py`. **Net edge** subtracts half-spread slippage and fee-adjusted profit from gross edge vs Kalshi **ask** prices.
+
+Training includes **Kalshi market features** (`kalshi_yes_mid`, `kalshi_yes_ask`, `kalshi_no_ask`, `kalshi_yes_spread`). Live runs use real quotes; historical training/backtest estimate quotes from settlement proxy distance.
 
 ## Manual Overrides
 
@@ -112,13 +115,15 @@ python train.py --days 60
 
 Training labels prefer **stored BRTI ticks** (true 60-second settlement windows). When enough BRTI-labeled samples exist, training automatically uses them only. Force with `python train.py --brti-only`, or include candle proxies with `--all-labels`.
 
-The model includes **BRTI-native features**: 60s average vs reference, 1m/3m/5m momentum, 5m/15m volatility, composite basis, and a time-weighted settlement proxy. **Retrain after this update:** `python train.py --days 60`.
+The model includes **BRTI-native features** (60s average vs reference, momentum, volatility, composite basis, settlement proxy) and **Kalshi quote features**. **Retrain after feature updates:** `python train.py --days 60`.
 
 ## Backtesting
 
 ```bash
 python backtest.py --offset 7 --days 30
 ```
+
+Backtest uses the same **ENTER gates** as live (conviction, net edge, BRTI alignment, 5–10 min window). PnL buys at estimated ask prices and applies Kalshi fees on wins. Default `--offset 7` observes 8 minutes before expiry (sweet spot). Persistence is skipped (single sample per window).
 
 ## Disclaimer
 

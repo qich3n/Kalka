@@ -24,7 +24,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Backtest the prediction model")
     parser.add_argument(
         "--offset", type=int, default=7,
-        help="Minutes into window to make prediction (default: 7)",
+        help="Minutes into window to observe (default: 7 → 8 min remaining, entry sweet spot 5–10)",
     )
     parser.add_argument(
         "--days", type=int, default=30,

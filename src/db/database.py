@@ -30,6 +30,7 @@ class Database:
     def _init_schema(self) -> None:
         """Create tables if they do not exist."""
         self._migrate_candles_schema()
+        self._migrate_predictions_schema()
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS funding_rates (
                 timestamp TIMESTAMP PRIMARY KEY,
@@ -133,6 +134,36 @@ class Database:
             """)
             self.conn.execute("DROP TABLE candles")
             self.conn.execute("ALTER TABLE candles_migrated RENAME TO candles")
+
+    def _migrate_predictions_schema(self) -> None:
+        """Add columns for Kalshi quotes and entry signals."""
+        for col, dtype in (
+            ("yes_ask", "DOUBLE"),
+            ("no_ask", "DOUBLE"),
+            ("net_edge_yes", "DOUBLE"),
+            ("net_edge_no", "DOUBLE"),
+            ("entry_signal", "VARCHAR"),
+        ):
+            try:
+                self.conn.execute(
+                    f"ALTER TABLE predictions ADD COLUMN IF NOT EXISTS {col} {dtype}"
+                )
+            except Exception:
+                pass
+        for col, dtype in (
+            ("entry_signal", "VARCHAR"),
+            ("yes_ask", "DOUBLE"),
+            ("no_ask", "DOUBLE"),
+            ("net_edge_yes", "DOUBLE"),
+            ("net_edge_no", "DOUBLE"),
+            ("minutes_remaining", "DOUBLE"),
+        ):
+            try:
+                self.conn.execute(
+                    f"ALTER TABLE backtest_results ADD COLUMN IF NOT EXISTS {col} {dtype}"
+                )
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # Candles
@@ -339,9 +370,10 @@ class Database:
             INSERT INTO predictions (
                 id, timestamp, btc_price, strike, minutes_remaining,
                 model_probability, kalshi_implied_prob, edge,
+                yes_ask, no_ask, net_edge_yes, net_edge_no, entry_signal,
                 recommendation, top_factors
             ) VALUES (
-                nextval('predictions_id_seq'), ?, ?, ?, ?, ?, ?, ?, ?, ?
+                nextval('predictions_id_seq'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             """,
             [
@@ -352,6 +384,11 @@ class Database:
                 record["model_probability"],
                 record["kalshi_implied_prob"],
                 record["edge"],
+                record.get("yes_ask"),
+                record.get("no_ask"),
+                record.get("net_edge_yes"),
+                record.get("net_edge_no"),
+                record.get("entry_signal"),
                 record["recommendation"],
                 json.dumps(record["top_factors"]),
             ],
@@ -393,9 +430,11 @@ class Database:
                 """
                 INSERT INTO backtest_results (
                     id, run_id, timestamp, strike, model_probability,
-                    kalshi_implied_prob, actual_label, recommendation, pnl
+                    kalshi_implied_prob, actual_label, recommendation,
+                    entry_signal, yes_ask, no_ask, net_edge_yes, net_edge_no,
+                    minutes_remaining, pnl
                 ) VALUES (
-                    nextval('backtest_results_id_seq'), ?, ?, ?, ?, ?, ?, ?, ?
+                    nextval('backtest_results_id_seq'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 [
@@ -406,6 +445,12 @@ class Database:
                     r.get("kalshi_implied_prob"),
                     r["actual_label"],
                     r["recommendation"],
+                    r.get("entry_signal"),
+                    r.get("yes_ask"),
+                    r.get("no_ask"),
+                    r.get("net_edge_yes"),
+                    r.get("net_edge_no"),
+                    r.get("minutes_remaining"),
                     r.get("pnl", 0.0),
                 ],
             )

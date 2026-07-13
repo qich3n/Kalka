@@ -88,6 +88,10 @@ ENTRY_CONVICTION_THRESHOLD = 0.70  # stricter conviction bar for ENTER (vs 55% r
 REQUIRE_BRTI_ALIGNMENT = True  # YES only when BRTI >= reference; NO when BRTI <= reference
 ENTRY_PERSISTENCE_SAMPLES = 2  # consecutive agreeing runs required before ENTER
 ENTRY_PERSISTENCE_MINUTES = 3  # lookback window for persistence check
+ENTRY_MIN_MINUTES_REMAINING = 5   # sweet spot: don't enter too close to expiry
+ENTRY_MAX_MINUTES_REMAINING = 10  # sweet spot: don't enter too early in window
+ASSUMED_KALSHI_SPREAD = 0.02      # default yes/no spread when bid unavailable
+KALSHI_FEE_ON_PROFITS = 0.07      # Kalshi fee on winning contract profit (~7%)
 PREFER_BRTI_LABELS = True  # train on BRTI-labeled samples when enough exist
 MIN_BRTI_TRAINING_SAMPLES = 50
 CALIBRATION_METHOD = "isotonic"  # isotonic or platt

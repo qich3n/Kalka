@@ -20,6 +20,7 @@ from src.data.brti import (
     compute_brti_features,
     compute_settlement_label,
 )
+from src.trading.logic import estimate_kalshi_quotes
 
 # Columns used as model inputs (order matters for persistence)
 FEATURE_COLUMNS = [
@@ -59,6 +60,11 @@ FEATURE_COLUMNS = [
     "brti_volatility_15m",
     "brti_vs_composite_basis_pct",
     "settlement_proxy_vs_reference_pct",
+    # Kalshi market context
+    "kalshi_yes_mid",
+    "kalshi_yes_ask",
+    "kalshi_no_ask",
+    "kalshi_yes_spread",
     # Interaction features
     "distance_x_time",
     "momentum_x_volatility",
@@ -213,6 +219,7 @@ class FeatureEngineer:
         brti_spot: float | None = None,
         composite_price: float | None = None,
         observation_time: datetime | None = None,
+        kalshi: dict[str, float] | None = None,
     ) -> dict[str, float]:
         """
         Build a feature dict from the latest candle window.
@@ -277,6 +284,16 @@ class FeatureEngineer:
                 composite_price=composite_price if composite_price else candle_price,
             )
         )
+
+        k = kalshi or {}
+        yes_mid = k.get("kalshi_yes_mid", 0.5)
+        yes_ask = k.get("kalshi_yes_ask", yes_mid + config.ASSUMED_KALSHI_SPREAD / 2)
+        no_ask = k.get("kalshi_no_ask", (1.0 - yes_mid) + config.ASSUMED_KALSHI_SPREAD / 2)
+        yes_bid = k.get("kalshi_yes_bid", yes_mid - config.ASSUMED_KALSHI_SPREAD / 2)
+        features["kalshi_yes_mid"] = yes_mid
+        features["kalshi_yes_ask"] = yes_ask
+        features["kalshi_no_ask"] = no_ask
+        features["kalshi_yes_spread"] = max(yes_ask - yes_bid, 0.0)
 
         return self._add_interactions(features)
 
@@ -376,6 +393,12 @@ class FeatureEngineer:
                 except (ValueError, KeyError):
                     continue
 
+                est = estimate_kalshi_quotes(features)
+                features["kalshi_yes_mid"] = est["kalshi_yes_mid"]
+                features["kalshi_yes_ask"] = est["kalshi_yes_ask"]
+                features["kalshi_no_ask"] = est["kalshi_no_ask"]
+                features["kalshi_yes_spread"] = est["kalshi_yes_spread"]
+
                 samples.append({
                     "window_start": ws.to_pydatetime() if hasattr(ws, "to_pydatetime") else ws,
                     "observation_time": obs_time.to_pydatetime() if hasattr(obs_time, "to_pydatetime") else obs_time,
@@ -383,6 +406,7 @@ class FeatureEngineer:
                     "settlement_avg": settlement_avg,
                     "label": label,
                     "label_source": label_source,
+                    "minutes_remaining": minutes_remaining,
                     "features": features,
                 })
 
@@ -522,6 +546,16 @@ class FeatureEngineer:
             "BRTI above composite spot",
             "BRTI below composite spot",
             lambda v: v > 0,
+        ),
+        "kalshi_yes_mid": (
+            "Kalshi pricing YES high",
+            "Kalshi pricing YES low",
+            lambda v: v > 0.5,
+        ),
+        "kalshi_yes_spread": (
+            "Wide Kalshi spread",
+            "Tight Kalshi spread",
+            lambda v: v > config.ASSUMED_KALSHI_SPREAD,
         ),
     }
 
